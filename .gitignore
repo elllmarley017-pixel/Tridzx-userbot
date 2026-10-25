@@ -16,3 +16,6 @@ temp/*
 .DS_Store
 Thumbs.db
 *.swp
+session/
+.env
+logs/
