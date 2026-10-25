@@ -171,6 +171,20 @@ function targetListCard() {
   });
 }
 
+/** ` · 361 grup, 59 pribadi, 5 channel` for the footer. */
+function kindsLabel(kinds) {
+  if (!kinds || typeof kinds !== "object") return "";
+  const parts = [
+    [kinds.supergroup, "grup"],
+    [kinds.user, "pribadi"],
+    [kinds.channel, "channel"],
+    [kinds.group, "grup"],
+  ]
+    .filter(([count]) => count)
+    .map(([count, label]) => `${count} ${label}`);
+  return parts.length ? ` · ${[...new Set(parts)].join(", ")}` : "";
+}
+
 function progressCard(state, meta) {
   const pct = state.total ? Math.trunc((state.processed / state.total) * 100) : 0;
   // Numbers must be RichText nodes, not pre-rendered HTML strings: a plain
@@ -196,9 +210,9 @@ function progressCard(state, meta) {
     title: state.cancelled ? "🛑 Broadcast Dihentikan" : "📤 Broadcast Berjalan",
     blocks: rows,
     compact: true,
-    footer: `Jeda ${meta.delayMs} ms · ${meta.targetCount} chat tujuan${
+    footer: `Jeda ${meta.delayMs} ms · ${meta.targetCount} tujuan${
       meta.scanned ? ` · ${meta.scanned} dipindai` : ""
-    }${meta.curated ? ` · +${meta.curated} dari .bcall add` : ""}`,
+    }${kindsLabel(meta.kinds)}${meta.curated ? ` · +${meta.curated} dari .bcall add` : ""}`,
   });
 }
 
@@ -235,7 +249,7 @@ function summaryCard(result, meta) {
 
   const sourceLabel = `semua chat tersedia (${meta.scanned || 0} dipindai${
     meta.truncated ? ", dibatasi" : ""
-  }${meta.curated ? `, +${meta.curated} dari .bcall add` : ""})`;
+  }${kindsLabel(meta.kinds)}${meta.curated ? `, +${meta.curated} dari .bcall add` : ""})`;
   return formatRichMessage({
     title,
     details,
@@ -303,6 +317,8 @@ async function resolveTargets(client, event) {
     scanned: found.scanned,
     truncated: found.truncated,
     curated: extras.length,
+    kinds: found.kinds || {},
+    unique: found.unique || 0,
   };
 }
 
@@ -399,6 +415,7 @@ async function runBroadcast(client, event, payload, meta) {
     source: resolved.source,
     truncated: Boolean(resolved.truncated),
     curated: resolved.curated || 0,
+    kinds: resolved.kinds || {},
   };
 
   // Reuse the scanning card as the progress card (avoids a second message).
@@ -462,12 +479,21 @@ async function runBroadcast(client, event, payload, meta) {
   const final = summaryCard(result, metaInfo);
   if (result.failed && !result.sent) markActivityFailed("Semua tujuan gagal");
 
-  try {
-    if (placeholder) await editMarkdown(placeholder, final);
-    else await respondMarkdown(client, event, final);
-  } catch {
-    await respondMarkdown(client, event, final);
+  // Exactly one summary message. Editing the progress card is the normal path;
+  // sending a fresh message is only a fallback when there was no card to edit.
+  // The old code fell back on *any* edit error, which duplicated the summary.
+  if (placeholder) {
+    try {
+      await editMarkdown(placeholder, final);
+      void lastState;
+      return;
+    } catch (err) {
+      // A failed edit must not swallow the result, but it also must not spam:
+      // report the failure once and try a single fresh message.
+      console.warn(`⚠️  Ringkasan broadcast tidak dapat mengedit kartu: ${err.message}`);
+    }
   }
+  await respondMarkdown(client, event, final);
   void lastState;
 }
 

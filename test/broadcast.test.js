@@ -5,6 +5,10 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
+// Termux keeps node_modules outside the project; this makes `require("telegram")`
+// resolvable for the discovery test.
+require("../native_bootstrap");
+
 const R = "..";
 const rich = require(`${R}/utils/rich_message`);
 const store = require(`${R}/utils/broadcast_store`);
@@ -90,4 +94,74 @@ test("stop still cancels a running broadcast", async () => {
   } finally {
     store.setDelay(before);
   }
+});
+
+/* ------------------------------------------------------------------ *
+ * Chat discovery + target preparation                                 *
+ * ------------------------------------------------------------------ */
+const discovery = require(`${R}/utils/chat_discovery`);
+
+test("dialog ids are read from GramJS Integer objects", () => {
+  // GramJS returns `{ value: bigint }` for dialog.id; missing that shape made
+  // every dialog look like "no entity" ("Chat dipindai: 0").
+  assert.equal(discovery.normalizeId({ value: -1003998955394n }), -1003998955394);
+  assert.equal(discovery.normalizeId(-1003998955394n), -1003998955394);
+  assert.equal(discovery.normalizeId("-1003998955394"), -1003998955394);
+  assert.equal(discovery.normalizeId({}), null);
+  assert.equal(discovery.normalizeId(null), null);
+});
+
+test("every scanned dialog is accounted for as target or skip reason", async () => {
+  const { Api } = require("telegram");
+  const dialogs = [
+    { id: { value: -100n }, entity: Object.assign(new Api.Channel(), { id: -100, title: "g", broadcast: false, megagroup: true }), title: "g" },
+    { id: { value: 200n }, entity: Object.assign(new Api.User(), { id: 200, firstName: "a" }), title: "a" },
+    { id: { value: 300n }, entity: Object.assign(new Api.User(), { id: 300, bot: true }), title: "b" },
+  ];
+  const client = { iterDialogs: () => dialogs[Symbol.iterator]() };
+  const found = await discovery.discoverChats(client, { selfId: "999" });
+
+  const total =
+    found.targets.length +
+    Object.values(found.skipped).reduce((sum, value) => sum + value, 0);
+  assert.equal(found.scanned, 3);
+  assert.equal(total, found.scanned, "target + skipped harus sama dengan scanned");
+  assert.equal(found.targets.length, 2, "grup + user valid");
+  assert.equal(found.skipped.bot, 1);
+});
+
+test("blacklist and duplicates are counted, never silently dropped", () => {
+  const saved = store.blacklist();
+  try {
+    // Clean slate for a deterministic assertion.
+    for (const entry of saved) store.removeBlacklist(entry.id);
+    store.addBlacklist(-500, "blokir");
+
+    const dialogs = [
+      { id: -100, title: "a" },
+      { id: -100, title: "a-dup" },
+      { id: -500, title: "blokir" },
+      { id: -200, title: "b" },
+    ];
+    const prepared = queue.prepareTargets(dialogs, {});
+    assert.equal(prepared.targets.length, 2, "dua target unik yang sah");
+    assert.equal(prepared.skipped.duplicate, 1, "duplikat harus dihitung");
+    assert.equal(prepared.skipped.blacklisted, 1, "blacklist harus dihitung");
+    const ids = prepared.targets.map((t) => t.id);
+    assert.equal(new Set(ids).size, ids.length, "tidak boleh ada id ganda");
+  } finally {
+    store.removeBlacklist(-500);
+    for (const entry of saved) store.addBlacklist(entry.id, entry.title);
+  }
+});
+
+test("prepareTargets excludes only the explicit chat, not every target", () => {
+  const dialogs = [
+    { id: -100, title: "a" },
+    { id: -200, title: "b" },
+    { id: 300, title: "c" },
+  ];
+  const prepared = queue.prepareTargets(dialogs, { exclude: new Set([300]) });
+  assert.equal(prepared.targets.length, 2);
+  assert.equal(prepared.skipped.excluded, 1);
 });

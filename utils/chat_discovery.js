@@ -32,10 +32,25 @@ const MAX_DIALOGS = Number(process.env.USERBOT_BCALL_MAX_DIALOGS || 2000);
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 
+/**
+ * Coerce a dialog/peer id to a number.
+ *
+ * GramJS returns `Integer` objects (`{ value: bigint }`) for `dialog.id` and
+ * `Peer*` ids, not plain numbers. Missing that shape made every dialog look
+ * like "no entity", which is what produced "Chat dipindai: 0".
+ */
 function normalizeId(value) {
   if (value == null) return null;
   if (typeof value === "bigint") return Number(value);
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "object") {
+    // Integer / Long wrappers from the TL layer.
+    if (value.value !== undefined) return normalizeId(value.value);
+    if (value.low !== undefined && value.high !== undefined) {
+      return Number(BigInt(value.high) << 32n | BigInt(value.low >>> 0));
+    }
+    return null;
+  }
   const text = String(value).trim();
   return /^-?\d+$/.test(text) ? Number(text) : null;
 }
@@ -162,7 +177,12 @@ async function discoverChats(client, options = {}) {
       skipped.noEntity += 1;
       continue;
     }
-    if (seen.has(id)) continue;
+    if (seen.has(id)) {
+      // The same chat appearing twice is a real (if rare) case; report it so the
+      // totals add up instead of vanishing silently.
+      skipped.duplicate = (skipped.duplicate || 0) + 1;
+      continue;
+    }
     seen.add(id);
 
     const reason = ineligibleReason(entity, selfId);
@@ -179,7 +199,12 @@ async function discoverChats(client, options = {}) {
     });
   }
 
-  return { targets, skipped, scanned, truncated };
+  const kinds = targets.reduce((acc, target) => {
+    acc[target.kind] = (acc[target.kind] || 0) + 1;
+    return acc;
+  }, {});
+
+  return { targets, skipped, scanned, truncated, kinds, unique: seen.size };
 }
 
 module.exports = {
