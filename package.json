@@ -1,0 +1,40 @@
+{
+  "name": "telegram-userbot",
+  "version": "1.0.0",
+  "description": "v1.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js",
+    "test": "node --test test/*.test.js",
+    "bot": "node bot_api_server.js",
+    "start:bot": "node bot_api_server.js",
+    "inline": "node bot_api_server.js",
+    "bot:inline": "node bot.js",
+    "userbot:inline": "node userbot.js",
+    "userbot:login": "node userbot.js --login"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elllmarley017-pixel/hytrix-userbot-telegram.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/elllmarley017-pixel/hytrix-userbot-telegram/issues"
+  },
+  "homepage": "https://github.com/elllmarley017-pixel/hytrix-userbot-telegram#readme",
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "jsdom": "^25.0.1",
+    "jszip": "^3.10.2",
+    "lottie-web": "^5.12.2",
+    "node-id3": "^0.2.9",
+    "node-sqlite3-wasm": "^0.8.0",
+    "qrcode": "^1.5.4",
+    "telegram": "^2.26.22",
+    "undici": "^7.29.1",
+    "youtubei.js": "^18.1.0"
+  }
+}

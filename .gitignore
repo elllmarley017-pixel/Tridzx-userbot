@@ -1,0 +1,11 @@
+node_modules/
+.env
+session/*.session
+session/*.session-journal
+session/config.json
+session/inline_catalog.json
+session/inline_media/
+session/bot_poll.lock
+logs/*.log
+temp/*
+!temp/.gitkeep
