@@ -238,6 +238,9 @@ async function runAction(client, action = {}) {
     // and a handler that requires one answers with its own usage hint.
     const hit = pattern.test(base) || pattern.test(text);
     if (!hit) continue;
+    // Handlers read their arguments from `event.patternMatch.group(n)`. Without
+    // this, every argument-taking command threw "reading 'group'".
+    event.patternMatch = createPatternMatch(pattern, text, null);
     try {
       await handler.__callback(event);
       matched += 1;

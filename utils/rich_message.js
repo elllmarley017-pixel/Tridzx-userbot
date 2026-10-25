@@ -754,12 +754,14 @@ function renderLegacyButton(button) {
     case "login_url":
       return `<a href="${escAttr(button.login_url.url)}">${label}</a>`;
     case "copy_text": {
-      // `copy_text` has no MTProto entity. Render the value itself as inline
-      // code (tap-to-select) so the exact payload can still be copied in one
-      // gesture, instead of showing a dead "Salin" label.
+      // `copy_text` has no MTProto entity. Show the label *and* the payload as
+      // inline code, so a tap-to-select copy still works and the button keeps
+      // its meaning. Showing the payload alone produced a bare `<code>` with no
+      // hint of what it does.
       const value = String((button.copy_text && button.copy_text.text) || "");
       if (!value) return `<u>${label}</u>`;
       const shown = value.length > 64 ? `${value.slice(0, 61)}…` : value;
+      if (label && label !== value) return `${label} <code>${esc(shown)}</code>`;
       return `<code>${esc(shown)}</code>`;
     }
     case "disabled":

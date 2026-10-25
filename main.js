@@ -130,6 +130,8 @@ function registerHandlers(client) {
     "sticker",
     "converter",
     "infobot",
+    "gitupload",
+    "access",
     "broadcast",
     "inline",
   ];

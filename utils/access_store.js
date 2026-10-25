@@ -266,11 +266,105 @@ function premiumList(now = Date.now()) {
     .map((entry) => ({ ...entry, remainingMs: Date.parse(entry.expires_at) - now }));
 }
 
+/* ------------------------------------------------------------------ *
+ * Reference resolution (id / @username / t.me link)                   *
+ * ------------------------------------------------------------------ */
+/**
+ * Parse a user reference without touching the network.
+ *
+ * Accepted shapes: `123456789`, `@username`, `username`, `t.me/username`,
+ * `https://t.me/username`. A bare number is an id; anything else is a username.
+ *
+ * @param {string|number} ref
+ * @returns {{kind: "id", id: number} | {kind: "username", username: string} | null}
+ */
+function parseUserRef(ref) {
+  const raw = String(ref == null ? "" : ref).trim();
+  if (!raw) return null;
+
+  // t.me/<username> or https://t.me/<username>
+  const link = /^(?:https?:\/\/)?(?:t\.me|telegram\.me)\/([A-Za-z][A-Za-z0-9_]{3,31})\/?$/i.exec(raw);
+  if (link) return { kind: "username", username: link[1] };
+
+  // Telegram usernames are 5-32 chars. Longer input is a typo, not a username,
+  // so it is reported as invalid instead of being sent to Telegram.
+  const handle = /^@?([A-Za-z][A-Za-z0-9_]{4,31})$/.exec(raw);
+  if (handle && !/^\d+$/.test(raw)) return { kind: "username", username: handle[1] };
+
+  const id = normalizeId(raw.replace(/^@/, ""));
+  if (id != null) return { kind: "id", id };
+
+  return null;
+}
+
+/**
+ * Resolve a reference to a Telegram user id.
+ *
+ * Uses the userbot's MTProto session (`client.getEntity`), so a username that
+ * the account has never seen still resolves through Telegram.
+ *
+ * @param {object} client GramJS client (may be null for id-only usage)
+ * @param {string|number} ref
+ * @returns {Promise<{id: number, username?: string, name?: string, entity?: object}>}
+ */
+async function resolveUserRef(client, ref) {
+  const parsed = parseUserRef(ref);
+  if (!parsed) {
+    const shown = String(ref == null ? "" : ref).trim();
+    if (/^@?[A-Za-z][A-Za-z0-9_]*$/.test(shown) && shown.replace(/^@/, "").length > 32) {
+      throw new RangeError(`Username terlalu panjang (maksimal 32 karakter): ${shown}`);
+    }
+    throw new RangeError("Format tidak valid. Gunakan ID angka, @username, atau t.me/username.");
+  }
+
+  if (parsed.kind === "id") {
+    let name = "";
+    let username;
+    if (client) {
+      try {
+        const entity = await client.getEntity(parsed.id);
+        if (entity) {
+          if (entity.bot) throw new RangeError("Bot tidak dapat dijadikan owner atau premium.");
+          username = entity.username || undefined;
+          name = [entity.firstName, entity.lastName].filter(Boolean).join(" ") || entity.title || "";
+        }
+      } catch (err) {
+        if (err instanceof RangeError) throw err;
+        /* an unknown id is still a valid id: keep it */
+      }
+    }
+    return { id: parsed.id, username, name };
+  }
+
+  if (!client) {
+    throw new RangeError("Resolusi username membutuhkan sesi userbot yang aktif.");
+  }
+  let entity;
+  try {
+    entity = await client.getEntity(parsed.username);
+  } catch {
+    throw new RangeError(`Username @${parsed.username} tidak dapat ditemukan.`);
+  }
+  if (!entity) throw new RangeError(`Username @${parsed.username} tidak dapat ditemukan.`);
+  if (entity.bot) throw new RangeError("Bot tidak dapat dijadikan owner atau premium.");
+
+  const id = normalizeId(entity.id);
+  if (id == null) throw new RangeError(`ID untuk @${parsed.username} tidak dapat dibaca.`);
+  return {
+    id,
+    username: entity.username || parsed.username,
+    name: [entity.firstName, entity.lastName].filter(Boolean).join(" ") || entity.title || "",
+    entity,
+  };
+}
+
 module.exports = {
   ACCESS_FILE,
   MAX_PREMIUM_DAYS,
   MAX_ENTRIES,
   normalizeId,
+  parseUserRef,
+  resolveUserRef,
   load,
   save,
   extraOwners,

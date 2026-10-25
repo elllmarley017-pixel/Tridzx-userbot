@@ -1,11 +1,18 @@
 node_modules/
 .env
-session/*.session
-session/*.session-journal
-session/config.json
-session/inline_catalog.json
-session/inline_media/
-session/bot_poll.lock
-logs/*.log
+.env.local
+.env.*.local
+
+# Session & kredensial: JANGAN pernah di-commit.
+session/
+!session/.gitkeep
+
+# Log dan artefak sementara
+logs/
 temp/*
 !temp/.gitkeep
+
+# Berkas OS/editor
+.DS_Store
+Thumbs.db
+*.swp
